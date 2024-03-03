@@ -5,17 +5,20 @@
 #include "iostream"
 #include <ostream>
 #include <fstream>
+#include "numeric"
 
 #include "spdlog/spdlog.h"
-#include "cuda_utils.h"
 #include <cuda_runtime.h>
 
 #include "NvInfer.h"
-#include "NvOnnxParser.h"
 #include "NvInferPlugin.h"
+#include "device_launch_parameters.h"
+#include "NvUtils.h"
 #include "NvInferRuntimeCommon.h"
+#include "NvInferVersion.h"
 
 #include "tensorrt_engine.h"
+#include "cuda_utils.h"
 #include "../../utils/common_utils.h"
 
 
@@ -132,13 +135,14 @@ void TensorRT_Engine::prepare_buffers()
 {
     CUDA_CHECK(cudaStreamCreate(&this->stream));
     const int numBindings = this->engine->getNbBindings();
-    assert(numBindings == 2);
+    //assert(numBindings == 2);
     //std::cout<<numBindings<<std::endl;
+    // 遍历所有输入输出节点
     for (int i = 0; i < numBindings; ++i) {
-        std::string name = std::string(this->engine->getBindingName(i));
-        const Dims dimensions = this->engine->getBindingDimensions(i);
-        const DataType dataType = this->engine->getBindingDataType(i);
-        int elem_byte = sizeof(float);
+        std::string name = std::string(this->engine->getBindingName(i));        // 节点名称
+        const Dims dimensions = this->engine->getBindingDimensions(i);          // 节点数据维度
+        const DataType dataType = this->engine->getBindingDataType(i);          // 节点数据类型
+        int elem_byte = sizeof(float);                                          // 节点数据类型大小
         switch (engine->getBindingDataType(i)) {
             case nvinfer1::DataType::kHALF:
                 elem_byte = sizeof(float) / 2;
@@ -147,90 +151,86 @@ void TensorRT_Engine::prepare_buffers()
                 elem_byte = sizeof(float);
                 break;
         }
+        // 初始化节点shape(不包括batchsize)和大小
         std::vector<int> shape;
-        int size = 1;
-        for(int i = 0 ; i < dimensions.nbDims ; i++){
-            if(i == 0){
-                this->batch_size = dimensions.d[i];
+        for(int j = 0 ; j < dimensions.nbDims ; j++){
+            if(j == 0){
+                this->batch_size = dimensions.d[j];
             } else{
-                shape.push_back(dimensions.d[i]);
-                size *= dimensions.d[i];
+                shape.emplace_back(dimensions.d[j]);
             }
-            //std::cout<<dimensions.d[i]<<" ";
         }
-        //std::cout<<std::endl;
+        int size = std::accumulate(shape.begin(),shape.end(),1,std::multiplies<int64_t>());
         // 初始化模型缓存空间
-//        CUDA_CHECK(cudaMalloc((void **)&this->buffers[i],
-//                              this->batch_size*size*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&this->buffers[i],
-                              this->batch_size*size*elem_byte));
+        CUDA_CHECK(cudaMalloc(&this->buffers[i],this->batch_size*size*elem_byte));
+        // 初始化输入输出节点信息
         if(this->engine->bindingIsInput(i)){            // 输入节点
             //std::cout<<i<<"节点为输入节点，节点名称为："<<name<<std::endl;
-            this->input_shape = shape;
-            this->input_size = size;
-            this->input_type = dataType;
-            this->input_name = name;
+            this->input_shapes.emplace_back(shape);
+            this->input_sizes.emplace_back(size);
+            this->input_types.emplace_back(dataType);
+            this->input_names.emplace_back(name);
         } else{                                                   // 输出节点
             //std::cout<<i<<"节点为输出节点，节点名称为："<<name<<std::endl;
-            this->output_shape = shape;
-            this->output_size = size;
-            this->output_type = dataType;
-            this->output_name = name;
+            this->output_shapes.emplace_back(shape);
+            this->output_sizes.emplace_back(size);
+            this->output_types.emplace_back(dataType);
+            this->output_names.emplace_back(name);
         }
     }
 }
 
 /**
  * @brief 这是获取TensorRT模型输入维度的函数,不包括batchsize
- * @return 不包括batchsize的模型输入维度
+ * @return 不包括batchsize的模型输入维度二维数组
  */
-std::vector<int> TensorRT_Engine::get_input_shape()
+std::vector<std::vector<int>> TensorRT_Engine::get_input_shapes()
 {
-    return this->input_shape;
+    return this->input_shapes;
 }
 
 /**
  * @brief 这是获取TensorRT模型输入大小的函数,不包括batchsize
- * @return 不包括batchsize的TensorRT模型输入大小
+ * @return 不包括batchsize的TensorRT模型输入大小数组
  */
-int TensorRT_Engine::get_input_size()
+std::vector<int> TensorRT_Engine::get_input_sizes()
 {
-    return this->input_size;
+    return this->input_sizes;
 }
 
 /**
  * @brief 这是获取TensorRT模型输出维度的函数,不包括batchsize
- * @return 不包括batchsize的模型输出维度
+ * @return 不包括batchsize的模型输出维度二维数组
  */
-std::vector<int> TensorRT_Engine::get_output_shape()
+std::vector<std::vector<int>> TensorRT_Engine::get_output_shapes()
 {
-    return this->output_shape;
+    return this->output_shapes;
 }
 
 /**
  * @brief 这是获取TensorRT模型输出大小的函数,不包括batchsize
- * @return 不包括batchsize的TensorRT模型输出大小
+ * @return 不包括batchsize的TensorRT模型输出大小数组
  */
-int TensorRT_Engine::get_output_size() {
-    return this->output_size;
+std::vector<int> TensorRT_Engine::get_output_sizes() {
+    return this->output_sizes;
 }
 
 /**
  * @brief 这是获取TensorRT模型输入节点名称的函数
- * @return TensorRT模型输入节点名称
+ * @return TensorRT模型输入节点名称数组
  */
-std::string TensorRT_Engine::get_input_name()
+std::vector<std::string> TensorRT_Engine::get_input_names()
 {
-    return this->input_name;
+    return this->input_names;
 }
 
 /**
  * @brief 这是获取TensorRT模型输出节点名称的函数
- * @return TensorRT模型输出节点名称
+ * @return TensorRT模型输出节点名称数组
  */
-std::string TensorRT_Engine::get_output_name()
+std::vector<std::string> TensorRT_Engine::get_output_names()
 {
-    return this->output_name;
+    return this->output_names;
 }
 
 /**
@@ -244,24 +244,32 @@ int TensorRT_Engine::get_batch_size()
 
 /**
  * @brief 这是TensorRT推理引擎类的前向推理函数
- * @param input_tensor 输入张量数组
- * @param output_tensor 输出张量数组
+ * @param input_tensor 输入张量二维数组
+ * @param output_tensor 输出张量二维数组
  */
-void TensorRT_Engine::inference(float *input_tensor, float *output_tensor)
+void TensorRT_Engine::inference(std::vector<float*>& input_tensor,std::vector<float*>& output_tensor)
 {
     std::lock_guard<std::mutex> lock(this->g_mutex);
 //    const int input_index = this->engine->getBindingIndex(this->input_name.c_str());
 //    const int output_index = this->engine->getBindingIndex(this->output_name.c_str());
     // 将输入数据input传到cuda缓存中
-    CUDA_CHECK(cudaMemcpyAsync(this->buffers[0], input_tensor,
-                               this->batch_size * this->input_size * sizeof(float),
-                               cudaMemcpyHostToDevice, stream));
+    int input_node_num = input_tensor.size();
+    for(int i = 0 ; i < input_tensor.size(); i++){
+        CUDA_CHECK(cudaMemcpyAsync(this->buffers[i], input_tensor[i],
+                                   this->batch_size * this->input_sizes[i] * sizeof(float),
+                                   cudaMemcpyHostToDevice, stream));
+    }
+    spdlog::debug("输入数据张量已传入TensorRT推理引擎缓冲区");
     //this->context->enqueue(this->batch_size, (void **)this->buffers, this->stream, nullptr);
-    this->context->enqueueV2((void **)this->buffers, this->stream, nullptr);
+    this->context->enqueueV2(this->buffers.data(), this->stream, nullptr);
+    spdlog::debug("TensorRT推理引擎完成模型前向推理");
     // 将cuda缓存中输出结果传到output数组中
-    CUDA_CHECK(cudaMemcpyAsync(output_tensor, this->buffers[1],
-                               this->batch_size * this->output_size * sizeof(float),
-                               cudaMemcpyDeviceToHost, stream));
+    for(int i = 0 ; i < output_tensor.size() ; i++){
+        CUDA_CHECK(cudaMemcpyAsync(output_tensor[i], this->buffers[input_node_num+i],
+                                   this->batch_size * this->output_sizes[i] * sizeof(float),
+                                   cudaMemcpyDeviceToHost, stream));
+    }
+    spdlog::debug("输出数据张量已传入TensorRT推理引擎缓冲区");
     cudaStreamSynchronize(stream);
 }
 

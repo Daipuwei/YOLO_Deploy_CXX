@@ -8,29 +8,19 @@
 #include "mutex"
 #include "vector"
 #include "string"
+
+#include "./logger.h"
+#include "./cuda_utils.h"
 #include "../base_engine.h"
 
 #include <numeric>
 #include "NvInfer.h"
-#include "NvOnnxParser.h"
 #include "NvInferPlugin.h"
 #include "device_launch_parameters.h"
 #include "NvUtils.h"
 #include "NvInferRuntimeCommon.h"
 #include "NvInferVersion.h"
 
-#include "logger.h"
-
-using namespace nvonnxparser;
-using namespace nvinfer1;
-
-#ifndef TRT_NOEXCEPT
-#if NV_TENSORRT_MAJOR >= 8
-#define TRT_NOEXCEPT noexcept
-#else
-#define TRT_NOEXCEPT
-#endif
-#endif
 
 class TensorRT_Engine:public BaseEngine{
 public:
@@ -65,37 +55,37 @@ public:
      * @brief 这是获取TensorRT模型输入维度的函数,不包括batchsize
      * @return 不包括batchsize的TensorRT模型输入维度数组
      */
-    std::vector<std::vector<int>> get_input_shape();
+    std::vector<std::vector<int>> get_input_shapes();
 
     /**
      * @brief 这是获取TensorRT模型输出维度的函数,不包括batchsize
      * @return 不包括batchsize的TensorRT模型输出维度数组
      */
-    std::vector<std::vector<int>> get_output_shape();
+    std::vector<std::vector<int>> get_output_shapes();
 
     /**
      * @brief 这是获取TensorRT模型输入大小的函数,不包括batchsize
      * @return 不包括batchsize的TensorRT模型输入大小数组
      */
-    std::vector<int> get_input_size();
+    std::vector<int> get_input_sizes();
 
     /**
      * @brief 这是获取TensorRT模型输出大小的函数,不包括batchsize
      * @return 不包括batchsize的TensorRT模型输出大小数组
      */
-    std::vector<int> get_output_size();
+    std::vector<int> get_output_sizes();
 
     /**
      * @brief 这是获取TensorRT模型输入节点名称的函数
      * @return TensorRT模型输入节点名称数组
      */
-    std::vector<std::string> get_input_name();
+    std::vector<std::string> get_input_names();
 
     /**
      * @brief 这是获取TensorRT模型输出节点名称的函数
      * @return TensorRT模型输出节点名称数组
      */
-    std::vector<std::string> get_output_name();
+    std::vector<std::string> get_output_names();
 
     /**
      * @brief 这是获取TensorRT模型batchsize大小的函数
@@ -103,12 +93,13 @@ public:
      */
     int get_batch_size();
 
-private:
-    std::string tensorrt_model_path;
-    std::vector<DataType> input_types;
-    std::vector<DataType> output_types;
+protected:
+    std::string tensorrt_model_path;                // tensorrt模型文件路径
+    std::vector<DataType> input_types;              // 输入节点数据类型数组
+    std::vector<DataType> output_types;             // 输出节点数据类型数组
     int gpu_id;
 
+private:
     // tensorrt参数
     Logger logger;                                  // 日志类实例
     IRuntime *runtime;                              // tensorrt运行实例指针

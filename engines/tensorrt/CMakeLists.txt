@@ -1,10 +1,4 @@
 cmake_minimum_required(VERSION 3.26)
-project(YOLO_Deploy_CXX)
-
-# 初始化相关路径
-set(CUDA_ROOT_PATH /usr/local/cuda-11.1)
-set(TRT_INCLUDE_PATH /usr/include/x86_64-linux-gnu/)
-set(TRT_LIB_PATH /usr/lib/x86_64-linux-gnu/)
 
 # 设置C++标准和调试模式
 set(CMAKE_CXX_STANDARD 14)
@@ -15,9 +9,10 @@ add_definitions(-DAPI_EXPORTS)
 # 不使用静态cuda_runtime库，即可执行文件中不包括cuda_runtime库
 option(CUDA_USE_STATIC_CUDA_RUNTIME OFF)
 
-# OpenCV
-find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
+# 初始化相关路径
+set(CUDA_ROOT_PATH /usr/local/cuda-11.1)
+set(TRT_INCLUDE_PATH /usr/include/x86_64-linux-gnu/)
+set(TRT_LIB_PATH /usr/lib/x86_64-linux-gnu/)
 
 # tensorrt
 #if(SYSTEM_TYPE STREQUAL "ARM")
@@ -46,13 +41,9 @@ link_directories(${CUDA_LIB_PATH})
 find_package(spdlog REQUIRED)
 include_directories(${spdlog_INCLUDE_DIRS})
 
-add_executable(YOLO_Deploy_CXX main.cpp
-        models/base_detection_model.h
-        models/yolov5/yolov5.cpp
-        models/yolov5/yolov5.h
-        models/detection_common.h
-        utils/common_utils.cpp
-        utils/common_utils.h
-        engines/base_engine.h
-        engines/tensorrt/tensorrt_engine.cpp
-        engines/tensorrt/tensorrt_engine.h)
+# 添加当前目录下的所有源文件
+file(GLOB SOURCES "*.cpp")
+
+# 生成动态链接库
+add_library(tensorrt_engine SHARED ${SOURCES})
+target_link_libraries(lpr_sdk nvinfer nvonnxparser cudart nvinfer_plugin ${spdlog_LIBS})
