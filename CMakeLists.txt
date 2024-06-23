@@ -1,58 +1,29 @@
-cmake_minimum_required(VERSION 3.26)
-project(YOLO_Deploy_CXX)
-
-# 初始化相关路径
-set(CUDA_ROOT_PATH /usr/local/cuda-11.1)
-set(TRT_INCLUDE_PATH /usr/include/x86_64-linux-gnu/)
-set(TRT_LIB_PATH /usr/lib/x86_64-linux-gnu/)
+cmake_minimum_required(VERSION 3.10)
+project(YOLO_Deploy)
 
 # 设置C++标准和调试模式
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_BUILD_TYPE Debug)
-add_definitions(-std=c++14)
+add_definitions(-std=c++11)
 add_definitions(-DAPI_EXPORTS)
 
-# 不使用静态cuda_runtime库，即可执行文件中不包括cuda_runtime库
-option(CUDA_USE_STATIC_CUDA_RUNTIME OFF)
+# 设置调试和发布模式的编译选项
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
-# OpenCV
-find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
+#设置cmakelist输入参数
+set(SDK_PATH ${SDK_PATH})                          # SDK路径
+set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)    # 源代码路径
 
-# tensorrt
-#if(SYSTEM_TYPE STREQUAL "ARM")
-#    set(TRT_INCLUDE_PATH /usr/include/aarch64-linux-gnu/)
-#    set(TRT_LIB_PATH /usr/lib/aarch64-linux-gnu/)
-#elseif (SYSTEM_TYPE STREQUAL "x86")
-#    #    set(TRT_INCLUDE_PATH ${TRT_ROOT_PATH}/include)
-#    #    set(TRT_LIB_PATH ${TRT_ROOT_PATH}/lib)
-#    #    message(STATUS "use custom tensorrt in ${TRT_ROOT_PATH}")
-#    set(TRT_INCLUDE_PATH /usr/include/x86_64-linux-gnu/)
-#    set(TRT_LIB_PATH /usr/lib/x86_64-linux-gnu/)
-#else ()
-#endif()
-message(STATUS "TensorRT in ${TRT_ROOT_PATH}")
-include_directories(${TRT_INCLUDE_PATH})
-link_directories(${TRT_LIB_PATH})
+# 加载第三方依赖库
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmakes/platform/${PLATFORM_TYPE}/depend.cmake)
+#include(${CMAKE_CURRENT_SOURCE_DIR}/cmakes/platform/x86_tensorrt/depend.cmake)
 
-# cuda
-find_package(CUDA REQUIRED)
-set(CUDA_INCLUDE_PATH  ${CUDA_ROOT_PATH}/include)
-set(CUDA_LIB_PATH  ${CUDA_ROOT_PATH}/lib64)
-include_directories(${CUDA_INCLUDE_PATH})
-link_directories(${CUDA_LIB_PATH})
+# 加载项目相关公共头文件和源文件
+include(cmakes/detection/common.cmake)
 
-# spdlog
-find_package(spdlog REQUIRED)
-include_directories(${spdlog_INCLUDE_DIRS})
+# 设置二级子项目CMakeLists.txt
+add_subdirectory(${SOURCE_DIR}/detect_tools Detection_Tools)
+add_subdirectory(${SOURCE_DIR}/tensorrt_tools TensorRT_Tools)
 
-add_executable(YOLO_Deploy_CXX main.cpp
-        models/base_detection_model.h
-        models/yolov5/yolov5.cpp
-        models/yolov5/yolov5.h
-        models/detection_common.h
-        utils/common_utils.cpp
-        utils/common_utils.h
-        engines/base_engine.h
-        engines/tensorrt/tensorrt_engine.cpp
-        engines/tensorrt/tensorrt_engine.h)
+# 安装模型相关文件
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/model_data DESTINATION ${SDK_PATH}/)
